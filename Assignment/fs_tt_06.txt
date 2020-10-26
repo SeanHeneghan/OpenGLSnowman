@@ -1,0 +1,98 @@
+#version 330 core
+
+in vec3 aPos;
+in vec3 aNormal;
+in vec2 aTexCoord;
+in vec2 movingTexCoord;
+
+out vec4 fragColor;
+ 
+uniform vec3 viewPos;
+uniform sampler2D first_texture;
+uniform sampler2D second_texture;
+
+struct Light {
+  vec3 position;  
+  vec3 direction;
+  float cutOff;
+  float outerCutOff;
+  
+  vec3 ambient;
+  vec3 diffuse;
+  vec3 specular;
+};
+
+uniform Light light;
+
+struct WorldLight {
+	vec3 position;
+	vec3 ambient;
+	vec3 diffuse;
+	vec3 specular;
+};
+
+uniform WorldLight world_light;
+
+struct Material {
+  vec3 ambient;
+  vec3 diffuse;
+  vec3 specular;
+  float shininess;
+}; 
+  
+uniform Material material;
+
+void main() {
+  //moving texture for wall
+  vec4 wall = mix(texture(first_texture, aTexCoord), texture(second_texture, movingTexCoord), 0.5f);
+
+  vec3 lightDir = normalize(light.position - aPos);
+
+  float theta = dot(lightDir, normalize(-light.direction));
+
+  //calculate values for world light
+
+  vec3 wl_ambient = world_light.ambient * material.diffuse * wall.rgb;
+
+  vec3 wl_norm = normalize(aNormal);
+  vec3 wl_lightDir = normalize(world_light.position - aPos);
+  float wl_diff = max(dot(wl_norm, wl_lightDir), 0.0);
+  vec3 wl_diffuse = world_light.diffuse * wl_diff * material.diffuse * wall.rgb;
+
+  vec3 wl_viewDir = normalize(viewPos - aPos);
+  vec3 wl_reflectDir = reflect(-wl_lightDir, wl_norm);
+  float wl_spec = pow(max(dot(wl_viewDir, wl_reflectDir), 0.0), material.shininess);
+  vec3 wl_specular = world_light.specular * wl_spec * material.specular * wall.rgb;
+  
+
+  if(theta > light.cutOff) {
+    //if the spotlight is shining on something
+
+    vec3 ambient = light.ambient * material.diffuse * wall.rgb;
+
+    vec3 norm = normalize(aNormal);
+    float diff = max(dot(norm, lightDir), 0.0);
+    vec3 diffuse = light.diffuse * diff * material.diffuse * wall.rgb;
+
+    vec3 viewDir = normalize(viewPos - aPos);
+    vec3 reflectDir = reflect(-lightDir, norm);
+    float spec = pow(max(dot(viewDir, reflectDir), 0.0), material.shininess);
+    vec3 specular = light.specular * spec * material.specular * wall.rgb;
+
+    float epsilon = (light.cutOff - light.outerCutOff);
+    float intensity = clamp((theta - light.outerCutOff) / epsilon, 0.0, 1.0);
+    diffuse  *= intensity;
+    specular *= intensity;
+
+	//take the result of both world light and spotlight
+    vec3 result = ambient + diffuse + specular + wl_ambient + wl_diffuse + wl_specular;
+    fragColor = vec4(result, 1.0);
+  }
+  else {
+	//values for parts of the scene NOT being shined on by spotlight
+
+	vec3 ambient = light.ambient * material.diffuse * wall.rgb;
+	vec3 results = ambient + wl_ambient + wl_diffuse + wl_specular;
+    fragColor = vec4(results, 1.0);
+  }
+}
